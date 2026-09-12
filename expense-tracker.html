@@ -6,9 +6,18 @@
   <title>Voice Expense Tracker</title>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f7f6; color: #333; }
-    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
-    h1 { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
+    h1, h2 { text-align: center; color: #2c3e50; }
     
+    /* Auth Form Styling */
+    .auth-form { display: flex; flex-direction: column; gap: 12px; }
+    .auth-form input { padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; }
+    .auth-btn-group { display: flex; gap: 10px; }
+    .auth-btn-group button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .login-btn { background: #2ecc71; color: white; }
+    .register-btn { background: #34495e; color: white; }
+    .logout-btn { background: #95a5a6; color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; float: right; }
+
     /* Summary Cards Styling */
     .summary-container { display: flex; gap: 15px; margin-bottom: 20px; }
     .summary-card { flex: 1; background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 15px; text-align: center; }
@@ -22,51 +31,124 @@
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
     #status { text-align: center; margin: 15px 0; font-style: italic; color: #666; }
     #transcript { background: #eef2f5; padding: 12px; border-radius: 6px; min-height: 40px; margin-bottom: 20px; }
+    
+    .hidden { display: none; }
   </style>
 </head>
 <body>
 
-<div class="card">
-  <h1>🎤 Voice Expense Tracker</h1>
-
-  <!-- Monthly & Category Breakdown Cards -->
-  <div class="summary-container">
-    <div class="summary-card">
-      <small>Spent This Month</small>
-      <h2 id="monthlyTotal">₹0</h2>
+  <!-- Auth View -->
+  <div id="authCard" class="card">
+    <h1>🔑 Login / Register</h1>
+    <div class="auth-form">
+      <input type="email" id="authEmail" placeholder="Enter Email" required>
+      <input type="password" id="authPassword" placeholder="Enter Password" required>
+      <div class="auth-btn-group">
+        <button class="login-btn" onclick="handleAuth('login')">Login</button>
+        <button class="register-btn" onclick="handleAuth('register')">Register</button>
+      </div>
     </div>
-    <div class="summary-card highlight">
-      <small>Highest Category</small>
-      <h2 id="topCategory">None</h2>
-    </div>
+    <p id="authStatus" style="text-align: center; margin-top: 10px; color: #e74c3c;"></p>
   </div>
 
-  <button id="micBtn" class="voice-btn">Click & Speak Expense</button>
-  <p id="status">Press button and speak (e.g., "Spent 500 on groceries")</p>
-  <div id="transcript">Your spoken text will appear here...</div>
-</div>
+  <!-- Main Application View -->
+  <div id="appCard" class="card hidden">
+    <button class="logout-btn" onclick="logout()">Logout</button>
+    <h1>🎤 Voice Expense Tracker</h1>
+
+    <!-- Summary Cards -->
+    <div class="summary-container">
+      <div class="summary-card">
+        <small>Spent This Month</small>
+        <h2 id="monthlyTotal">₹0</h2>
+      </div>
+      <div class="summary-card highlight">
+        <small>Highest Category</small>
+        <h2 id="topCategory">None</h2>
+      </div>
+    </div>
+
+    <button id="micBtn" class="voice-btn">Click & Speak Expense</button>
+    <p id="status">Press button and speak (e.g., "Spent 500 on groceries")</p>
+    <div id="transcript">Your spoken text will appear here...</div>
+  </div>
 
 <script>
+  const BASE_URL = 'https://expense-tracker-app-dziw.onrender.com';
+  
+  const authCard = document.getElementById('authCard');
+  const appCard = document.getElementById('appCard');
+  const authStatus = document.getElementById('authStatus');
+
   const micBtn = document.getElementById('micBtn');
   const status = document.getElementById('status');
   const transcriptDiv = document.getElementById('transcript');
   const monthlyTotalEl = document.getElementById('monthlyTotal');
   const topCategoryEl = document.getElementById('topCategory');
 
-  const BASE_URL = 'https://expense-tracker-app-dziw.onrender.com';
+  // Check authentication status on startup
+  const token = localStorage.getItem('token');
+  if (token) {
+    showApp();
+  }
 
-  // Function to load spending analytics
-  async function loadAnalytics() {
+  async function handleAuth(type) {
+    const email = document.getElementById('authEmail').value;
+    const password = document.getElementById('authPassword').value;
+
+    if (!email || !password) {
+      authStatus.innerText = "Please fill in all fields.";
+      return;
+    }
+
     try {
-      // Fetch total monthly spent
-      const summaryRes = await fetch(`${BASE_URL}/api/expenses/monthly-summary`);
+      const res = await fetch(`${BASE_URL}/api/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Authentication failed');
+
+      if (type === 'register') {
+        authStatus.style.color = '#2ecc71';
+        authStatus.innerText = "Account created! You can now log in.";
+      } else {
+        localStorage.setItem('token', data.token);
+        showApp();
+      }
+    } catch (err) {
+      authStatus.style.color = '#e74c3c';
+      authStatus.innerText = err.message;
+    }
+  }
+
+  function showApp() {
+    authCard.classList.add('hidden');
+    appCard.classList.remove('hidden');
+    loadAnalytics();
+  }
+
+  function logout() {
+    localStorage.removeItem('token');
+    appCard.classList.add('hidden');
+    authCard.classList.remove('hidden');
+    authStatus.innerText = "";
+  }
+
+  async function loadAnalytics() {
+    const jwtToken = localStorage.getItem('token');
+    try {
+      const headers = { 'Authorization': `Bearer ${jwtToken}` };
+
+      const summaryRes = await fetch(`${BASE_URL}/api/expenses/monthly-summary`, { headers });
       if (summaryRes.ok) {
         const summaryData = await summaryRes.json();
         monthlyTotalEl.innerText = `₹${summaryData.total_spent || 0}`;
       }
 
-      // Fetch highest spending category
-      const breakdownRes = await fetch(`${BASE_URL}/api/expenses/category-breakdown`);
+      const breakdownRes = await fetch(`${BASE_URL}/api/expenses/category-breakdown`, { headers });
       if (breakdownRes.ok) {
         const breakdownData = await breakdownRes.json();
         if (breakdownData.length > 0) {
@@ -80,9 +162,6 @@
       console.error('Failed to load analytics:', err);
     }
   }
-
-  // Initial load when the page opens
-  loadAnalytics();
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -106,19 +185,25 @@
       micBtn.innerText = 'Click & Speak Expense';
       status.innerText = 'Processing with Claude AI...';
 
+      const jwtToken = localStorage.getItem('token');
+
       try {
         const response = await fetch(`${BASE_URL}/api/parse-expense`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwtToken}`
+          },
           body: JSON.stringify({ text })
         });
-        const parsedData = await response.json();
-        status.innerText = `Logged: ${parsedData.description || text} - ₹${parsedData.amount} (${parsedData.category})`;
 
-        // Refresh analytics after a new expense is logged
+        const parsedData = await response.json();
+        if (!response.ok) throw new Error(parsedData.error || 'Failed to log');
+
+        status.innerText = `Logged: ${parsedData.description || text} - ₹${parsedData.amount} (${parsedData.category})`;
         loadAnalytics();
       } catch (err) {
-        status.innerText = 'Error processing expense: ' + err.message;
+        status.innerText = 'Error: ' + err.message;
       }
     };
 
