@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Voice Expense Tracker</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #f4f7f6; color: #333; }
+    .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+    h1 { text-align: center; color: #2c3e50; }
+    .voice-btn { width: 100%; padding: 15px; font-size: 18px; background: #3498db; color: white; border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+    .voice-btn:hover { background: #2980b9; }
+    .voice-btn.recording { background: #e74c3c; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+    #status { text-align: center; margin: 15px 0; font-style: italic; color: #666; }
+    #transcript { background: #eef2f5; padding: 12px; border-radius: 6px; min-height: 40px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h1>🎤 Voice Expense Tracker</h1>
+  <button id="micBtn" class="voice-btn">Click & Speak Expense</button>
+  <p id="status">Press button and speak (e.g., "Spent 500 on groceries")</p>
+  <div id="transcript">Your spoken text will appear here...</div>
+</div>
+
+<script>
+  const micBtn = document.getElementById('micBtn');
+  const status = document.getElementById('status');
+  const transcriptDiv = document.getElementById('transcript');
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (!SpeechRecognition) {
+    status.innerText = "Speech Recognition API not supported in this browser. Use Chrome.";
+  } else {
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+
+    micBtn.addEventListener('click', () => {
+      recognition.start();
+      micBtn.classList.add('recording');
+      micBtn.innerText = 'Listening...';
+      status.innerText = 'Listening for voice input...';
+    });
+
+    recognition.onresult = async (event) => {
+      const text = event.results[0][0].transcript;
+      transcriptDiv.innerText = `You said: "${text}"`;
+      micBtn.classList.remove('recording');
+      micBtn.innerText = 'Click & Speak Expense';
+      status.innerText = 'Processing with Claude AI...';
+
+      try {
+        const response = await fetch('http://localhost:3001/api/parse-expense', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        const parsedData = await response.json();
+        status.innerText = `Logged: ${parsedData.description || text} - ₹${parsedData.amount} (${parsedData.category})`;
+      } catch (err) {
+        status.innerText = 'Error processing expense: ' + err.message;
+      }
+    };
+
+    recognition.onerror = (event) => {
+      micBtn.classList.remove('recording');
+      micBtn.innerText = 'Click & Speak Expense';
+      status.innerText = 'Error: ' + event.error;
+    };
+  }
+</script>
+
+</body>
+</html>
