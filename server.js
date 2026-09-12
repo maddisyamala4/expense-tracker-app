@@ -77,7 +77,7 @@ app.post("/api/login", async (req, res) => {
 
 // ---------------- EXPENSE & ANALYTICS ROUTES ----------------
 
-// Parse & Save Expense
+// Parse & Save Expense using Free Google Gemini API
 app.post("/api/parse-expense", authenticateToken, async (req, res) => {
   const { text } = req.body;
   const userId = req.user.id;
@@ -93,37 +93,27 @@ Respond with ONLY raw JSON (no markdown formatting, no backticks, no extra text)
 }`;
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1000,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      }
+    );
 
     const data = await response.json();
 
-    // Check for API errors or missing credentials
     if (!response.ok || data.error) {
-      return res.status(500).json({ error: data.error?.message || "Anthropic API Error. Check API key." });
+      return res.status(500).json({ error: data.error?.message || "Gemini API Error." });
     }
 
-    // Safe extraction check
-    if (!data.content || !data.content[0] || !data.content[0].text) {
-      return res.status(500).json({ error: "Invalid response format received from AI." });
-    }
-
-    const rawText = data.content[0].text;
+    const rawText = data.candidates[0].content.parts[0].text;
     const cleaned = rawText.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
-    // Save to PostgreSQL database
     await pool.query(
       "INSERT INTO expenses (user_id, amount, category, description, date) VALUES ($1, $2, $3, $4, $5)",
       [userId, parsed.amount, parsed.category, parsed.description, parsed.date]
@@ -135,7 +125,7 @@ Respond with ONLY raw JSON (no markdown formatting, no backticks, no extra text)
   }
 });
 
-// Monthly Total Route
+// Fetch Monthly Summary (Scoped to logged-in user)
 app.get("/api/expenses/monthly-summary", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -149,7 +139,7 @@ app.get("/api/expenses/monthly-summary", authenticateToken, async (req, res) => 
   }
 });
 
-// Category Breakdown Route
+// Fetch Category Breakdown (Scoped to logged-in user)
 app.get("/api/expenses/category-breakdown", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
