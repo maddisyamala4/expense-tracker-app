@@ -16,17 +16,17 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// Fallback JWT secret key (for production, define JWT_SECRET in your .env / Render settings)
+// JWT Secret Key
 const JWT_SECRET = process.env.JWT_SECRET || "your_fallback_secret_key";
 
-// Serve static frontend files (HTML, CSS, JS)
+// Serve static frontend files
 app.use(express.static(__dirname));
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "expense-tracker.html"));
 });
 
-// Middleware: Verify JWT Token for Protected Routes
+// Middleware: Verify JWT Token
 function authenticateToken(req, res, next) {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -35,7 +35,7 @@ function authenticateToken(req, res, next) {
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return res.status(403).json({ error: "Invalid or expired token." });
-    req.user = user; // Contains user.id for route handler use
+    req.user = user;
     next();
   });
 }
@@ -77,14 +77,14 @@ app.post("/api/login", async (req, res) => {
 
 // ---------------- EXPENSE & ANALYTICS ROUTES ----------------
 
-// Parse & Save Expense (Scoped to logged-in user)
+// Parse & Save Expense
 app.post("/api/parse-expense", authenticateToken, async (req, res) => {
   const { text } = req.body;
   const userId = req.user.id;
   const today = new Date().toISOString().slice(0, 10);
 
   const prompt = `Today's date is ${today}. Extract a single expense from: "${text}"
-Respond with ONLY raw JSON (no markdown, no extra text):
+Respond with ONLY raw JSON (no markdown formatting, no backticks, no extra text):
 {
   "amount": <number>,
   "category": <one of: Food, Groceries, Transport, Shopping, Bills, Entertainment, Health, Other>,
@@ -101,18 +101,29 @@ Respond with ONLY raw JSON (no markdown, no extra text):
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 1000,
         messages: [{ role: "user", content: prompt }]
       })
     });
 
     const data = await response.json();
-    const textBlock = (data.content || []).find((b) => b.type === "text");
-    const cleaned = textBlock.text.replace(/```json|```/g, "").trim();
+
+    // Check for API errors or missing credentials
+    if (!response.ok || data.error) {
+      return res.status(500).json({ error: data.error?.message || "Anthropic API Error. Check API key." });
+    }
+
+    // Safe extraction check
+    if (!data.content || !data.content[0] || !data.content[0].text) {
+      return res.status(500).json({ error: "Invalid response format received from AI." });
+    }
+
+    const rawText = data.content[0].text;
+    const cleaned = rawText.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
 
-    // Save linked to specific user
+    // Save to PostgreSQL database
     await pool.query(
       "INSERT INTO expenses (user_id, amount, category, description, date) VALUES ($1, $2, $3, $4, $5)",
       [userId, parsed.amount, parsed.category, parsed.description, parsed.date]
@@ -124,7 +135,7 @@ Respond with ONLY raw JSON (no markdown, no extra text):
   }
 });
 
-// Fetch Monthly Summary (Scoped to logged-in user)
+// Monthly Total Route
 app.get("/api/expenses/monthly-summary", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -138,7 +149,7 @@ app.get("/api/expenses/monthly-summary", authenticateToken, async (req, res) => 
   }
 });
 
-// Fetch Category Breakdown (Scoped to logged-in user)
+// Category Breakdown Route
 app.get("/api/expenses/category-breakdown", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(`
