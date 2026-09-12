@@ -60,6 +60,37 @@ Respond with ONLY raw JSON (no markdown, no extra text):
     res.status(500).json({ error: err.message });
   }
 });
+// Get total spent in the current month
+app.get("/api/expenses/monthly-summary", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        SUM(amount) AS total_spent,
+        TO_CHAR(CURRENT_DATE, 'Month YYYY') AS current_month
+      FROM expenses
+      WHERE DATE_TRUNC('month', date) = DATE_TRUNC('month', CURRENT_DATE)
+    `);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get spending breakdown by category sorted by highest spender
+app.get("/api/expenses/category-breakdown", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT category, SUM(amount) AS total 
+      FROM expenses 
+      WHERE DATE_TRUNC('month', date) = DATE_TRUNC('month', CURRENT_DATE)
+      GROUP BY category 
+      ORDER BY total DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Start the server
 const PORT = process.env.PORT || 3001;
