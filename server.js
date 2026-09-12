@@ -1,10 +1,19 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 require("dotenv").config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Serve static files (HTML, CSS, JS) from the root directory
+app.use(express.static(__dirname));
+
+// Serve expense-tracker.html on the root URL (/)
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "expense-tracker.html"));
+});
 
 // Test route - just to check if server is running
 app.get("/api/test", (req, res) => {
@@ -33,6 +42,7 @@ Respond with ONLY raw JSON (no markdown, no extra text):
       headers: {
         "Content-Type": "application/json",
         "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
@@ -54,5 +64,5 @@ Respond with ONLY raw JSON (no markdown, no extra text):
 // Start the server
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
