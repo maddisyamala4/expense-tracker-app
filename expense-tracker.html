@@ -53,7 +53,7 @@
       status.innerText = 'Processing with Claude AI...';
 
       try {
-        const response = await fetch('http://localhost:3001/api/parse-expense', {
+        const response = await fetch('https://expense-tracker-app-dziw.onrender.com/api/parse-expense', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text })
